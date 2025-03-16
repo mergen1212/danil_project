@@ -1,0 +1,7 @@
+venv
+.ropeproject
+private.key
+key.pub
+__pycache__
+.ruff_cache
+.env
