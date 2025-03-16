@@ -6,8 +6,17 @@ from passlib.context import CryptContext
 
 from sqlalchemy.ext.asyncio.session import AsyncSession
 
-from models import UserReqst
-from db import create_tables, create_test_user, get_async_db, get_user_by_username
+from models import AddToCart, CategoryCreate, ProductCreateSchema, UserReqst
+from db import (
+    add_to_cart,
+    create_category,
+    create_product,
+    create_tables,
+    create_test_user,
+    get_all_products,
+    get_async_db,
+    get_user_by_username,
+)
 
 
 # Конфигурация JWT
@@ -19,12 +28,11 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7
 # User=Model(username="testuser",full_name="Test User",email="test@example.com",hashed_password="$2b$12$SErMU3rgP5PQ0Ji2m83osOaXi5QUQAlMKp0T86rxC0VA5zwY7ITay",disabled=False)
 
 
-
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
 
 
-async def verify_password(plain_password:str, hashed_password:str) -> bool:
+async def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
@@ -55,25 +63,23 @@ async def decode_token(token: str) -> dict | None:
         return None
 
 
-async def get_user(
-    db: AsyncSession, username: str
-):
-    user = await get_user_by_username(db,username)
+async def get_user(db: AsyncSession, username: str):
+    user = await get_user_by_username(db, username)
     if not user:
         return None
     return user
 
 
-async def authenticate_user(username: str, password: str,db: AsyncSession):
-    user =await get_user(db, username)
-    if  user is None:
+async def authenticate_user(username: str, password: str, db: AsyncSession):
+    user = await get_user(db, username)
+    if user is None:
         return None
-    elif await verify_password(password,user.hashed_password)!=True:
+    elif await verify_password(password, user.hashed_password) != True:
         return None
     return user
 
 
-async def get_current_user(db: AsyncSession,token: str):
+async def get_current_user(db: AsyncSession, token: str):
     payload = await decode_token(token)
 
     if (
@@ -97,8 +103,11 @@ app = FastAPI()
 
 
 @app.post("/token")
-async def login(form_data: OAuth2PasswordRequestForm = Depends(),db: AsyncSession = Depends(get_async_db)):
-    user = await authenticate_user(form_data.username, form_data.password,db)
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_async_db),
+):
+    user = await authenticate_user(form_data.username, form_data.password, db)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -126,8 +135,10 @@ async def refresh(refresh_token: str):
 
 
 @app.get("/me/user")
-async def read_users_me(db: AsyncSession = Depends(get_async_db),token: str = Depends(oauth2_scheme)):
-    return await get_current_user(db,token)
+async def read_users_me(
+    db: AsyncSession = Depends(get_async_db), token: str = Depends(oauth2_scheme)
+):
+    return await get_current_user(db, token)
 
 
 @app.get("/users/{username}")
@@ -145,9 +156,62 @@ async def migrate():
 
 @app.put("/create_user")
 async def update_item(user: UserReqst, db: AsyncSession = Depends(get_async_db)):
-    user.hashed_password =await get_password_hash(user.hashed_password)
+    user.hashed_password = await get_password_hash(user.hashed_password)
     b = await create_test_user(db, user)
     return b
+
+
+@app.post("/cart/add")
+async def add_to_cart_endpoint(
+    product_to_cart: AddToCart, db: AsyncSession = Depends(get_async_db)
+):
+    try:
+        cart_item = await add_to_cart(
+            db,
+            product_to_cart.user_id,
+            product_to_cart.product_id,
+            product_to_cart.quantity,
+        )
+        return {"status": "success", "cart_item_id": cart_item.id}
+    except ValueError as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/products/")
+async def create_new_product(
+    product_data: ProductCreateSchema, db: AsyncSession = Depends(get_async_db)
+):
+    try:
+        product = await create_product(
+            db=db,
+            name=product_data.name,
+            description=product_data.description,
+            price=product_data.price,
+            stock=product_data.stock,
+            category_ids=product_data.category_ids,
+        )
+        return product
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/categories/")
+async def create_new_category(
+    category_data: CategoryCreate, db: AsyncSession = Depends(get_async_db)
+):
+    try:
+        category = await create_category(
+            db=db, name=category_data.name, description=category_data.description
+        )
+        return category
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/products/all")
+async def get_products_sequence(db: AsyncSession = Depends(get_async_db)):
+    all_products = await get_all_products(db)
+    return all_products
 
 
 if __name__ == "__main__":
