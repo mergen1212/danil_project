@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
@@ -18,12 +19,13 @@ from db import (
     get_user_by_username,
 )
 
+from config import settings
 
 # Конфигурация JWT
-SECRET_KEY = "your_secret_key"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-REFRESH_TOKEN_EXPIRE_DAYS = 7
+SECRET_KEY = settings.SECRET_KEY
+ALGORITHM = settings.ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+REFRESH_TOKEN_EXPIRE_DAYS = settings.REFRESH_TOKEN_EXPIRE_DAYS
 
 # User=Model(username="testuser",full_name="Test User",email="test@example.com",hashed_password="$2b$12$SErMU3rgP5PQ0Ji2m83osOaXi5QUQAlMKp0T86rxC0VA5zwY7ITay",disabled=False)
 

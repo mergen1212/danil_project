@@ -13,23 +13,11 @@ from sqlalchemy.orm import Mapped, relationship, mapped_column
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import IntegrityError
 from typing import List
-import os
 from models import UserReqst
-from sys import exit
-
-
-from dotenv import load_dotenv
 from typing import Sequence
+from config import settings
 
-
-# Загрузка переменных окружения из файла .env
-load_dotenv()
-
-# Получение значения переменной DATABASE_URL
-DATABASE_URL = os.getenv("DATABASE_URL")
-if DATABASE_URL is None:
-    print(f"ENV {None}")
-    exit(1)
+DATABASE_URL = settings.DATABASE_URL
 engine = create_async_engine(DATABASE_URL)
 AsyncSessionLocal = async_sessionmaker(
     engine, expire_on_commit=False, class_=AsyncSession
