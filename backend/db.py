@@ -12,8 +12,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, relationship, mapped_column
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import IntegrityError
-from typing import List
-from models import UserReqst
+from typing import List, Optional
+from models import CommentSchema, UserReqst
 from typing import Sequence
 from config import settings
 
@@ -30,14 +30,17 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     username: Mapped[str] = mapped_column(unique=True, index=True)
-    full_name: Mapped[str] = mapped_column()
+    full_name: Mapped[str] = mapped_column(default="")
     email: Mapped[str] = mapped_column()
     hashed_password: Mapped[str] = mapped_column()
     disabled: Mapped[bool] = mapped_column(default=False)
 
-    # Отношения с другими таблицами
+    # Отношения
     cart: Mapped[List["Cart"]] = relationship(back_populates="user")
     purchases: Mapped[List["Purchased"]] = relationship(back_populates="user")
+    comments: Mapped[List["Comment"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 product_category = Table(
@@ -57,14 +60,40 @@ class Product(Base):
     price: Mapped[float] = mapped_column()
     stock: Mapped[int] = mapped_column(default=0)
 
-    # Связь с категориями (многие-ко-многим)
+    # Отношения
     categories: Mapped[List["Category"]] = relationship(
         secondary=product_category, back_populates="products"
     )
-
-    # Существующие отношения с корзиной и покупками
     in_carts: Mapped[List["Cart"]] = relationship(back_populates="product")
     purchased: Mapped[List["Purchased"]] = relationship(back_populates="product")
+    comments: Mapped[List["Comment"]] = relationship(
+        back_populates="product", cascade="all, delete-orphan"
+    )
+
+
+class Comment(Base):
+    __tablename__ = "comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    text: Mapped[str] = mapped_column()
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
+
+    # Parent-child relationship
+    parent_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("comments.id"), nullable=True
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship(back_populates="comments")
+    product: Mapped["Product"] = relationship(back_populates="comments")
+    replies: Mapped[List["Comment"]] = relationship(
+        back_populates="parent", cascade="all, delete", passive_deletes=True
+    )
+    parent: Mapped["Comment"] = relationship(back_populates="replies", remote_side=[id])
 
 
 class Category(Base):
@@ -175,8 +204,13 @@ async def create_test_user(db: AsyncSession, user: UserReqst):
         disabled=user.disabled,
     )
     db.add(test_user)
-    await db.commit()
-    return {"OK": 200}
+    try:
+        await db.commit()
+        await db.refresh(test_user)
+    except IntegrityError:
+        await db.rollback()
+        raise ValueError("Ошибка при создании пользователя")
+    return test_user
 
 
 async def create_product(
@@ -229,8 +263,7 @@ async def create_product(
         await db.rollback()
         if "UNIQUE constraint failed: products.name" in str(e):
             raise ValueError(f"Продукт с названием '{name}' уже существует")
-        raise
-
+        raise ValueError(f"Продукт {name} создать не удалось")
     return new_product
 
 
@@ -272,3 +305,27 @@ async def get_all_products(db: AsyncSession) -> Sequence[Product]:
     query = select(Product)
     result = await db.execute(query)
     return result.scalars().all()
+
+
+async def create_reply_comment_or_comment(db: AsyncSession, CommentDTO: CommentSchema):
+    if CommentDTO.parent_id is None:
+        new_comment = Comment(
+            text=CommentDTO.text,
+            user_id=CommentDTO.user_id,
+            product_id=CommentDTO.product_id,
+        )
+    else:
+        new_comment = Comment(
+            text=CommentDTO.text,
+            user_id=CommentDTO.user_id,
+            product_id=CommentDTO.product_id,
+            parent_id=CommentDTO.parent_id,
+        )
+    db.add(new_comment)
+    try:
+        await db.commit()
+        await db.refresh(new_comment)
+        return new_comment
+    except IntegrityError:
+        await db.rollback()
+        raise ValueError("Ошибка при создании коментария")

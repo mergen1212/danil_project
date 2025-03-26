@@ -7,11 +7,18 @@ from passlib.context import CryptContext
 
 from sqlalchemy.ext.asyncio.session import AsyncSession
 
-from models import AddToCart, CategoryCreate, ProductCreateSchema, UserReqst
+from models import (
+    AddToCart,
+    CategoryCreate,
+    CommentSchema,
+    ProductCreateSchema,
+    UserReqst,
+)
 from db import (
     add_to_cart,
     create_category,
     create_product,
+    create_reply_comment_or_comment,
     create_tables,
     create_test_user,
     get_all_products,
@@ -169,10 +176,10 @@ async def add_to_cart_endpoint(
 ):
     try:
         cart_item = await add_to_cart(
-            db,
-            product_to_cart.user_id,
-            product_to_cart.product_id,
-            product_to_cart.quantity,
+            db=db,
+            user_id=product_to_cart.user_id,
+            product_id=product_to_cart.product_id,
+            quantity=product_to_cart.quantity,
         )
         return {"status": "success", "cart_item_id": cart_item.id}
     except ValueError as e:
@@ -214,6 +221,13 @@ async def create_new_category(
 async def get_products_sequence(db: AsyncSession = Depends(get_async_db)):
     all_products = await get_all_products(db)
     return all_products
+
+@app.post("/comments")
+async def create_comment(
+    comment_data: CommentSchema, db: AsyncSession = Depends(get_async_db)
+):
+    new = await create_reply_comment_or_comment(db, comment_data)
+    return new
 
 
 if __name__ == "__main__":

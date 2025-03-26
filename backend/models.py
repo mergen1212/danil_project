@@ -3,7 +3,7 @@ from pydantic.main import BaseModel
 
 class UserReqst(BaseModel):
     username: str
-    full_name: str
+    full_name: str | None = None
     email: str
     hashed_password: str
     disabled: bool = False
@@ -26,3 +26,15 @@ class ProductCreateSchema(BaseModel):
 class CategoryCreate(BaseModel):
     name: str
     description: str
+
+
+class UserLogSchema(BaseModel):
+    name: str
+    password: str
+
+
+class CommentSchema(BaseModel):
+    text: str
+    user_id: int  # ID менеджера магазина
+    product_id: int
+    parent_id: int | None = None
