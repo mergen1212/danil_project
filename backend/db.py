@@ -9,10 +9,9 @@ from sqlalchemy import (
     Table,
     Integer,
 )
-from sqlalchemy.orm import Mapped, relationship, mapped_column
+from sqlalchemy.orm import Mapped, relationship, mapped_column, selectinload
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import IntegrityError
-from typing import List, Optional
 from models import CommentSchema, UserReqst
 from typing import Sequence
 from config import settings
@@ -36,9 +35,9 @@ class User(Base):
     disabled: Mapped[bool] = mapped_column(default=False)
 
     # Отношения
-    cart: Mapped[List["Cart"]] = relationship(back_populates="user")
-    purchases: Mapped[List["Purchased"]] = relationship(back_populates="user")
-    comments: Mapped[List["Comment"]] = relationship(
+    cart: Mapped[list["Cart"]] = relationship(back_populates="user")
+    purchases: Mapped[list["Purchased"]] = relationship(back_populates="user")
+    comments: Mapped[list["Comment"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -61,12 +60,12 @@ class Product(Base):
     stock: Mapped[int] = mapped_column(default=0)
 
     # Отношения
-    categories: Mapped[List["Category"]] = relationship(
+    categories: Mapped[list["Category"]] = relationship(
         secondary=product_category, back_populates="products"
     )
-    in_carts: Mapped[List["Cart"]] = relationship(back_populates="product")
-    purchased: Mapped[List["Purchased"]] = relationship(back_populates="product")
-    comments: Mapped[List["Comment"]] = relationship(
+    in_carts: Mapped[list["Cart"]] = relationship(back_populates="product")
+    purchased: Mapped[list["Purchased"]] = relationship(back_populates="product")
+    comments: Mapped[list["Comment"]] = relationship(
         back_populates="product", cascade="all, delete-orphan"
     )
 
@@ -83,14 +82,14 @@ class Comment(Base):
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
 
     # Parent-child relationship
-    parent_id: Mapped[Optional[int]] = mapped_column(
+    parent_id: Mapped[int | None] = mapped_column(
         ForeignKey("comments.id"), nullable=True
     )
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="comments")
     product: Mapped["Product"] = relationship(back_populates="comments")
-    replies: Mapped[List["Comment"]] = relationship(
+    replies: Mapped[list["Comment"]] = relationship(
         back_populates="parent", cascade="all, delete", passive_deletes=True
     )
     parent: Mapped["Comment"] = relationship(back_populates="replies", remote_side=[id])
@@ -104,7 +103,7 @@ class Category(Base):
     description: Mapped[str] = mapped_column()
 
     # Связь с товарами (многие-ко-многим)
-    products: Mapped[List["Product"]] = relationship(
+    products: Mapped[list["Product"]] = relationship(
         secondary=product_category, back_populates="categories"
     )
 
@@ -329,3 +328,35 @@ async def create_reply_comment_or_comment(db: AsyncSession, CommentDTO: CommentS
     except IntegrityError:
         await db.rollback()
         raise ValueError("Ошибка при создании коментария")
+
+
+async def add_categories_to_product(
+    db: AsyncSession, product_id: int, category_ids: list[int]
+) -> Product:
+    # Получаем продукт с предзагруженными категориями
+    product = await db.get(
+        Product, product_id, options=[selectinload(Product.categories)]
+    )
+    if not product:
+        raise ValueError(f"Product with ID {product_id} not found")
+
+    # Получаем запрашиваемые категории
+    stmt = select(Category).where(Category.id.in_(category_ids))
+    result = await db.execute(stmt)
+    categories = result.scalars().all()
+
+    # Фильтруем новые категории
+    existing_category_ids = {c.id for c in product.categories}
+    new_categories = [c for c in categories if c.id not in existing_category_ids]
+
+    # Добавляем связи
+    if new_categories:
+        product.categories.extend(new_categories)
+        try:
+            await db.commit()
+            await db.refresh(product, ["categories"])
+        except Exception as e:
+            await db.rollback()
+            raise RuntimeError(f"Error adding categories: {str(e)}")
+
+    return product

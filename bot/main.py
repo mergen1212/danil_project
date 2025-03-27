@@ -102,17 +102,14 @@ async def msg(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def main() -> None:
     """Start the bot."""
-    token=os.getenv("TOKEN")
+    token = os.getenv("TOKEN")
     if token is None:
         exit(1)
-    
+
     # Create the Application and pass it your token and private key
     private_key = Path("private.key")
     application = (
-        Application.builder()
-        .token(token)
-        .private_key(private_key.read_bytes())
-        .build()
+        Application.builder().token(token).private_key(private_key.read_bytes()).build()
     )
 
     # On messages that include passport data call msg

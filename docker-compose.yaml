@@ -1,18 +1,18 @@
-version: '3.8'
+version: "3.8"
 
 services:
   nginx:
-        image: nginx:alpine
-        container_name: fullapp-nginx
-        ports:
-          - "80:80"
-        volumes:
-          - './nginx.conf:/etc/nginx/nginx.conf'
-        depends_on:
-          - fast-api-app
-          - frontend
-        networks:
-          - my-shared-network
+    image: nginx:alpine
+    container_name: fullapp-nginx
+    ports:
+      - "3000:80"
+    volumes:
+      - "./nginx.conf:/etc/nginx/nginx.conf"
+    depends_on:
+      - fast-api-app
+      - frontend
+    networks:
+      - my-shared-network
   fast-api-app:
     image: localhost/my-python-app
     build:

@@ -1,6 +1,10 @@
 from pydantic.main import BaseModel
 
 
+class CategoryUpdateRequest(BaseModel):
+    category_ids: list[int]
+
+
 class UserReqst(BaseModel):
     username: str
     full_name: str | None = None

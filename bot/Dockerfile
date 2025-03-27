@@ -1,9 +1,9 @@
-FROM python:3.13-alpine
+FROM ghcr.io/astral-sh/uv:python3.13-alpine
 
 WORKDIR /app
 
 COPY . .
 
-RUN pip install --no-cache-dir -r requirements.txt
+RUN uv sync
 
-CMD ["python", "main.py"]
+CMD ["uv","run", "main.py"]

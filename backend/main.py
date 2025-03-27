@@ -1,20 +1,20 @@
 from datetime import datetime, timedelta, timezone
-
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-
 from sqlalchemy.ext.asyncio.session import AsyncSession
 
 from models import (
     AddToCart,
     CategoryCreate,
+    CategoryUpdateRequest,
     CommentSchema,
     ProductCreateSchema,
     UserReqst,
 )
 from db import (
+    add_categories_to_product,
     add_to_cart,
     create_category,
     create_product,
@@ -191,7 +191,8 @@ async def create_new_product(
     product_data: ProductCreateSchema, db: AsyncSession = Depends(get_async_db)
 ):
     try:
-        product = await create_product(
+        # Вызов функции create_product
+        new_product = await create_product(
             db=db,
             name=product_data.name,
             description=product_data.description,
@@ -199,9 +200,14 @@ async def create_new_product(
             stock=product_data.stock,
             category_ids=product_data.category_ids,
         )
-        return product
+        return new_product
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при создании продукта: {str(e)}",
+        )
 
 
 @app.post("/categories/")
@@ -222,12 +228,45 @@ async def get_products_sequence(db: AsyncSession = Depends(get_async_db)):
     all_products = await get_all_products(db)
     return all_products
 
+
 @app.post("/comments")
 async def create_comment(
     comment_data: CommentSchema, db: AsyncSession = Depends(get_async_db)
 ):
     new = await create_reply_comment_or_comment(db, comment_data)
     return new
+
+
+@app.patch(
+    "/products/{product_id}/categories",
+    status_code=status.HTTP_200_OK,
+    summary="Добавить категории к продукту",
+    responses={
+        404: {"description": "Продукт не найден"},
+        400: {"description": "Ошибка при обновлении данных"},
+    },
+)
+async def update_product_categories(
+    product_id: int,
+    update_data: CategoryUpdateRequest,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """
+    Добавляет категории к указанному продукту
+
+    - **product_id**: ID продукта для обновления
+    - **category_ids**: Список ID категорий для добавления
+    """
+    try:
+        updated_product = await add_categories_to_product(
+            db=db, product_id=product_id, category_ids=update_data.category_ids
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    return updated_product
 
 
 if __name__ == "__main__":
